@@ -1,0 +1,64 @@
+* { box-sizing: border-box; }
+body, html, #root { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f6f8; color: #1f2330; }
+
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; background: #d52b1e; color: white;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+header button { background: white; color: #d52b1e; border: none; padding: 8px 14px; font-weight: 600; border-radius: 4px; cursor: pointer; }
+header button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.grid { display: grid; grid-template-columns: 360px 1fr; flex: 1; overflow: hidden; }
+
+aside.left { border-right: 1px solid #e1e3e8; background: white; display: flex; flex-direction: column; overflow: hidden; }
+
+.upload { padding: 16px; border-bottom: 1px solid #e1e3e8; }
+.upload h3 { margin: 0 0 10px; font-size: 14px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; }
+.upload label { display: block; margin: 8px 0; font-size: 13px; }
+.upload input[type=file] { display: block; margin-top: 4px; font-size: 12px; }
+.upload button { margin-top: 10px; width: 100%; padding: 10px; background: #1f2330; color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; }
+.upload button:disabled { background: #ccc; cursor: not-allowed; }
+.upload .err { color: #d52b1e; font-size: 12px; margin-top: 8px; white-space: pre-wrap; }
+
+.chat { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.chat .messages { flex: 1; overflow-y: auto; padding: 12px; }
+.chat .msg { padding: 8px 12px; margin-bottom: 8px; border-radius: 8px; max-width: 90%; font-size: 13px; }
+.chat .msg.user { background: #1f2330; color: white; margin-left: auto; }
+.chat .msg.agent { background: #eef0f5; color: #1f2330; }
+.chat .msg pre { margin: 0; white-space: pre-wrap; font-family: inherit; }
+.chat .input-row { display: flex; padding: 8px; border-top: 1px solid #e1e3e8; }
+.chat .input-row input { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+.chat .input-row button { margin-left: 6px; padding: 8px 14px; background: #d52b1e; color: white; border: none; border-radius: 4px; cursor: pointer; }
+
+main.right { padding: 16px; overflow-y: auto; }
+.placeholder { color: #888; font-size: 14px; text-align: center; padding: 60px 20px; }
+
+.cost-compare, .route-table, .considerations, .exceptions { background: white; padding: 12px 16px; border-radius: 6px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+.cost-compare h4, .considerations h4, .exceptions h4 { margin: 0 0 8px; font-size: 13px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 600; padding: 6px 8px; background: #f5f6f8; border-bottom: 1px solid #e1e3e8; }
+td { padding: 6px 8px; border-bottom: 1px solid #f0f1f4; }
+.cost-compare td.savings { color: #2a8a2a; font-weight: 600; }
+.cost-compare td.loss { color: #d52b1e; font-weight: 600; }
+
+.route-table { overflow-x: auto; }
+.exceptions ul, .considerations ul { list-style: none; padding-left: 0; margin: 0; font-size: 13px; }
+.exceptions li { padding: 6px 8px; border-left: 3px solid #ccc; margin-bottom: 4px; background: #fafbfc; }
+.exceptions li.sev-violation { border-left-color: #d52b1e; }
+.exceptions li.sev-warning { border-left-color: #f59f00; }
+.exceptions li.sev-info { border-left-color: #4a90e2; }
+.exceptions.empty { color: #888; font-style: italic; }
+
+.considerations li { padding: 4px 0; border-bottom: 1px dotted #eee; }
+.considerations .relaxed li { color: #d97706; }
+
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.note { padding: 10px 14px; background: #fff8e1; border: 1px solid #f5d878; border-radius: 4px; font-size: 13px; margin-top: 12px; }
+
+.leaflet-container { border-radius: 6px; }

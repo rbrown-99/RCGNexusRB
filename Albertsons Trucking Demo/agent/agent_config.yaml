@@ -1,0 +1,29 @@
+name: albertsons-truck-routing-agent
+description: Dispatcher's copilot for cold-chain truck routing out of the Salt Lake City DC.
+model:
+  provider: azure_openai
+  deployment: gpt-4o
+  temperature: 0.2
+  max_output_tokens: 1500
+
+system_prompt: prompts/system_prompt.md
+
+grounding:
+  - grounding/trailer_specs.md
+  - grounding/road_restrictions.md
+  - grounding/routing_rules.md
+  - grounding/delivery_windows.md
+  - grounding/process_overview.md
+
+tools:
+  - tools/optimize.json
+  - tools/reoptimize.json
+  - tools/validate.json
+  - tools/explain.json
+  - tools/compare.json
+  - tools/parse.json
+
+# Backend base URL is read from the AGENT_BACKEND_URL env var when the tools execute.
+backend:
+  base_url_env: AGENT_BACKEND_URL
+  default: http://localhost:8000

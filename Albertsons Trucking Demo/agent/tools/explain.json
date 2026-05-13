@@ -1,0 +1,16 @@
+{
+  "type": "function",
+  "function": {
+    "name": "explain",
+    "description": "Get a structured rationale for a single route — capacity utilization, applied state restrictions, why the trailer config was used.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "session_id": {"type": "string"},
+        "route_id": {"type": "string"}
+      },
+      "required": ["session_id", "route_id"]
+    }
+  },
+  "endpoint": {"method": "GET", "path": "/api/explain/{session_id}/{route_id}"}
+}

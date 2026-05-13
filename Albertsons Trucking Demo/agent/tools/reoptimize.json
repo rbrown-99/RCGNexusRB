@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "reoptimize",
+    "description": "Re-run the optimizer with what-if changes: drop orders, drop locations, make trailer configs unavailable, or attach an extra consideration note. Returns a fresh route plan.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "session_id": {"type": "string"},
+        "remove_orders": {"type": "array", "items": {"type": "string"}},
+        "remove_locations": {"type": "array", "items": {"type": "string"}},
+        "remove_trailer_configs": {"type": "array", "items": {"type": "string"}, "description": "e.g. ['45-45_COMBO']"},
+        "extra_consideration": {"type": "string", "description": "free-form note appended to the result.considerations list"}
+      },
+      "required": ["session_id"]
+    }
+  },
+  "endpoint": {"method": "POST", "path": "/api/reoptimize/{session_id}", "content_type": "application/json"}
+}

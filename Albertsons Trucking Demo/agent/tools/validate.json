@@ -1,0 +1,15 @@
+{
+  "type": "function",
+  "function": {
+    "name": "validate",
+    "description": "Re-validate the routes in a session against all current constraints. Returns lists of violations, warnings, and info findings.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "session_id": {"type": "string"}
+      },
+      "required": ["session_id"]
+    }
+  },
+  "endpoint": {"method": "POST", "path": "/api/validate/{session_id}"}
+}

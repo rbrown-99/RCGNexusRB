@@ -1,0 +1,23 @@
+{
+  "type": "function",
+  "function": {
+    "name": "optimize",
+    "description": "Run the OR-Tools VRP solver against a parsed session (or against the bundled sample dataset). Returns full route plan with stops, capacity utilization, cost, and savings vs naive baseline.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "session_id": {"type": "string", "description": "Existing session id from /api/parse. If omitted, the agent should call optimize-from-samples."},
+        "solver_seconds": {"type": "integer", "default": 30, "description": "Wallclock budget for the solver."}
+      }
+    }
+  },
+  "endpoint": {
+    "method": "POST",
+    "path": "/api/optimize",
+    "content_type": "multipart/form-data"
+  },
+  "fallback_endpoint": {
+    "method": "POST",
+    "path": "/api/optimize-from-samples"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "type": "function",
+  "function": {
+    "name": "compare",
+    "description": "Compare two optimization sessions side-by-side. Returns deltas in routes, miles, cost, and savings percentage.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "session_a": {"type": "string"},
+        "session_b": {"type": "string"}
+      },
+      "required": ["session_a", "session_b"]
+    }
+  },
+  "endpoint": {"method": "POST", "path": "/api/compare", "query": ["session_a", "session_b"]}
+}

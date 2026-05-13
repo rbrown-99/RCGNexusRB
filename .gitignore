@@ -21,3 +21,6 @@ Thumbs.db
 # Azure
 .azure/
 *.zip
+
+# Smoke test artifacts
+**/smoke_out.txt

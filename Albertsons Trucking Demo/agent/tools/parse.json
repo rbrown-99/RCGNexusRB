@@ -1,0 +1,21 @@
+{
+  "type": "function",
+  "function": {
+    "name": "parse",
+    "description": "Parse three uploaded files (orders, locations, constraints) and return a session_id with summary metadata.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "orders_file_url": {"type": "string", "description": "URL or path to orders CSV/XLSX"},
+        "locations_file_url": {"type": "string", "description": "URL or path to locations XLSX"},
+        "constraints_file_url": {"type": "string", "description": "URL or path to constraints XLSX"}
+      },
+      "required": ["orders_file_url", "locations_file_url", "constraints_file_url"]
+    }
+  },
+  "endpoint": {
+    "method": "POST",
+    "path": "/api/parse",
+    "content_type": "multipart/form-data"
+  }
+}
