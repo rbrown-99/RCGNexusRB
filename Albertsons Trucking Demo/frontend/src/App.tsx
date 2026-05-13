@@ -9,14 +9,19 @@ import CostComparison from './components/CostComparison';
 import KpiCards from './components/KpiCards';
 import WelcomeCard from './components/WelcomeCard';
 import SampleDownloads from './components/SampleDownloads';
+import ArchitecturePage from './components/ArchitecturePage';
+import GuidePage from './components/GuidePage';
 import { optimizeFromSamples } from './services/apiClient';
 import type { OptimizeResponse } from './types';
 import './app.css';
+
+type Tab = 'optimizer' | 'architecture' | 'guide';
 
 export default function App() {
   const [resp, setResp] = useState<OptimizeResponse | undefined>();
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<Tab>('optimizer');
 
   async function runSample() {
     setBusy(true);
@@ -36,6 +41,12 @@ export default function App() {
     setSessionId(r.session_id);
   }
 
+  const tabs: { id: Tab; label: string; icon: string }[] = [
+    { id: 'optimizer',    label: 'Optimizer',    icon: '🚛' },
+    { id: 'architecture', label: 'Architecture', icon: '🏗️' },
+    { id: 'guide',        label: 'Guide',        icon: '📖' },
+  ];
+
   return (
     <div className="app">
       <header>
@@ -46,6 +57,17 @@ export default function App() {
             <span className="brand-tag">SLC Distribution Center · Route Optimization</span>
           </div>
         </div>
+        <nav className="tab-nav">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              className={`tab-btn ${tab === t.id ? 'active' : ''}`}
+              onClick={() => setTab(t.id)}
+            >
+              <span className="tab-icon" aria-hidden>{t.icon}</span> {t.label}
+            </button>
+          ))}
+        </nav>
         <div className="header-actions">
           <span className="header-status">
             {resp ? (
@@ -57,40 +79,54 @@ export default function App() {
         </div>
       </header>
 
-      <div className="grid">
-        <aside className="left">
-          <SampleDownloads onRunSample={runSample} busy={busy} />
-          <FileUpload onResult={handleResult} onSession={setSessionId} />
-          <ChatInterface sessionId={sessionId} result={resp} onResult={handleResult} />
-        </aside>
+      {tab === 'optimizer' && (
+        <div className="grid">
+          <aside className="left">
+            <SampleDownloads onRunSample={runSample} busy={busy} />
+            <FileUpload onResult={handleResult} onSession={setSessionId} />
+            <ChatInterface sessionId={sessionId} result={resp} onResult={handleResult} />
+          </aside>
 
-        <main className="right">
-          {resp ? (
-            <>
-              <KpiCards result={resp.result} />
-              <CostComparison result={resp.result} />
-              <RouteMap routes={resp.result.routes} />
-              <RouteSummaryTable routes={resp.result.routes} />
-              <div className="two-col">
-                <ConsiderationsPanel
-                  items={resp.result.considerations}
-                  relaxed={resp.result.relaxed_constraints}
-                />
-                <ExceptionsPanel items={resp.result.exceptions} />
-              </div>
-              {resp.distance_source === 'haversine_fallback' && (
-                <div className="note">
-                  Distance fallback: this run used straight-line distances.
-                  Set <code>AZURE_MAPS_KEY</code> in the backend to enable
-                  truck-routed mileage.
+          <main className="right">
+            {resp ? (
+              <>
+                <KpiCards result={resp.result} />
+                <CostComparison result={resp.result} />
+                <RouteMap routes={resp.result.routes} />
+                <RouteSummaryTable routes={resp.result.routes} />
+                <div className="two-col">
+                  <ConsiderationsPanel
+                    items={resp.result.considerations}
+                    relaxed={resp.result.relaxed_constraints}
+                  />
+                  <ExceptionsPanel items={resp.result.exceptions} />
                 </div>
-              )}
-            </>
-          ) : (
-            <WelcomeCard />
-          )}
+                {resp.distance_source === 'haversine_fallback' && (
+                  <div className="note">
+                    Distance fallback: this run used straight-line distances.
+                    Set <code>AZURE_MAPS_KEY</code> in the backend to enable
+                    truck-routed mileage.
+                  </div>
+                )}
+              </>
+            ) : (
+              <WelcomeCard />
+            )}
+          </main>
+        </div>
+      )}
+
+      {tab === 'architecture' && (
+        <main className="single-pane">
+          <ArchitecturePage />
         </main>
-      </div>
+      )}
+
+      {tab === 'guide' && (
+        <main className="single-pane">
+          <GuidePage />
+        </main>
+      )}
 
       <footer>
         <span>Albertsons Companies — Logistics Demo</span>
