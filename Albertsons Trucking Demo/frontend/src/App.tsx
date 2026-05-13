@@ -11,6 +11,7 @@ import WelcomeCard from './components/WelcomeCard';
 import SampleDownloads from './components/SampleDownloads';
 import ArchitecturePage from './components/ArchitecturePage';
 import GuidePage from './components/GuidePage';
+import BrandLogo from './components/BrandLogo';
 import { optimizeFromSamples } from './services/apiClient';
 import type { OptimizeResponse } from './types';
 import './app.css';
@@ -49,13 +50,11 @@ export default function App() {
 
   return (
     <div className="app">
+      <div className="brand-bar" aria-hidden />
       <header>
         <div className="brand">
-          <span className="brand-mark" aria-hidden>A</span>
-          <div className="brand-text">
-            <span className="brand-name">Albertsons</span>
-            <span className="brand-tag">SLC Distribution Center · Route Optimization</span>
-          </div>
+          <BrandLogo height={42} />
+          <span className="brand-tag">SLC Distribution Center · Route Optimization</span>
         </div>
         <nav className="tab-nav">
           {tabs.map((t) => (
