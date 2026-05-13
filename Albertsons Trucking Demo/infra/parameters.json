@@ -4,6 +4,7 @@
   "parameters": {
     "namePrefix": { "value": "albrouting" },
     "deployOpenAI": { "value": false },
-    "backendImage": { "value": "" }
+    "backendImage": { "value": "" },
+    "mcpImage": { "value": "" }
   }
 }

@@ -9,6 +9,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from ..config import settings
 from ..parser import parse_constraints, parse_locations, parse_orders
+from .. import persistence
 from ..solver import build_cost_matrix, solve_vrp, validate_routes
 from ..state import store
 
@@ -43,8 +44,12 @@ async def optimize_endpoint(
             sess = store.get(session_id)
         except KeyError:
             raise HTTPException(404, f"unknown session_id {session_id}")
-        result, _ = _run_pipeline(sess["orders"], sess["locations"], sess["bundle"], secs)
+        result, matrix = _run_pipeline(sess["orders"], sess["locations"], sess["bundle"], secs)
         store.update_result(session_id, result)
+        persistence.save_optimization_run(
+            session_id, kind="optimize", result=result,
+            distance_source="azure_maps" if matrix.used_azure_maps else "haversine_fallback",
+        )
         return {"session_id": session_id, "result": result.model_dump()}
 
     if not (orders and locations and constraints):
@@ -54,8 +59,17 @@ async def optimize_endpoint(
     parsed_locations = parse_locations(BytesIO(await locations.read()))
     parsed_bundle = parse_constraints(BytesIO(await constraints.read()))
     sid = store.create(parsed_orders, parsed_locations, parsed_bundle)
-    result, _ = _run_pipeline(parsed_orders, parsed_locations, parsed_bundle, secs)
+    persistence.save_session(
+        sid, n_orders=len(parsed_orders), n_locations=len(parsed_locations),
+        n_constraints=1, source="upload",
+    )
+    persistence.save_purchase_orders(sid, parsed_orders)
+    result, matrix = _run_pipeline(parsed_orders, parsed_locations, parsed_bundle, secs)
     store.update_result(sid, result)
+    persistence.save_optimization_run(
+        sid, kind="optimize", result=result,
+        distance_source="azure_maps" if matrix.used_azure_maps else "haversine_fallback",
+    )
     return {"session_id": sid, "result": result.model_dump()}
 
 
@@ -71,8 +85,17 @@ async def optimize_from_samples(solver_seconds: Optional[int] = None):
     parsed_locations = parse_locations(base / "sample_locations.xlsx")
     parsed_bundle = parse_constraints(base / "sample_constraints.xlsx")
     sid = store.create(parsed_orders, parsed_locations, parsed_bundle)
+    persistence.save_session(
+        sid, n_orders=len(parsed_orders), n_locations=len(parsed_locations),
+        n_constraints=1, source="samples",
+    )
+    persistence.save_purchase_orders(sid, parsed_orders)
     result, matrix = _run_pipeline(parsed_orders, parsed_locations, parsed_bundle, secs)
     store.update_result(sid, result)
+    persistence.save_optimization_run(
+        sid, kind="optimize", result=result,
+        distance_source="azure_maps" if matrix.used_azure_maps else "haversine_fallback",
+    )
     return {
         "session_id": sid,
         "distance_source": "azure_maps" if matrix.used_azure_maps else "haversine_fallback",

@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://localhost:4173"
     sample_data_dir: str = "../sample_data"
 
+    # Cosmos DB (optional — backend works without it for local dev)
+    cosmos_endpoint: str | None = None
+    cosmos_database: str = "routing"
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

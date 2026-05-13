@@ -1,10 +1,14 @@
+import { useState } from 'react';
+
 /**
- * Albertsons brand mark — stylistic placeholder.
+ * Albertsons brand mark.
  *
- * For production use, replace the inline SVG/wordmark with the licensed
- * Albertsons logo asset (SVG or PNG) provided by Albertsons brand team.
+ * Loads the official logo from `/albertsons-logo.svg` (preferred) or
+ * `/albertsons-logo.png` if the SVG is missing. Drop the licensed asset
+ * into `frontend/public/` and it will be picked up automatically.
  *
- * Colors here approximate Albertsons corporate blue.
+ * If neither file is present, falls back to a generic placeholder mark
+ * + wordmark so the build still renders.
  */
 interface Props {
   height?: number;
@@ -12,7 +16,41 @@ interface Props {
   onDark?: boolean;             // invert for use on a dark background
 }
 
+const SVG_SRC = '/albertsons-logo.svg';
+const PNG_SRC = '/albertsons-logo.png';
+
 export default function BrandLogo({ height = 40, variant = 'full', onDark = false }: Props) {
+  // Try SVG first, then PNG, then fall back to the placeholder.
+  const [src, setSrc] = useState<string | null>(SVG_SRC);
+  const [failed, setFailed] = useState(false);
+
+  if (!failed && src) {
+    return (
+      <img
+        src={src}
+        alt="Albertsons"
+        height={height}
+        style={{
+          height,
+          width: 'auto',
+          display: 'block',
+          ...(variant === 'mark'
+            ? { width: height, objectFit: 'contain' as const, objectPosition: 'left center' as const }
+            : {}),
+          ...(onDark ? { filter: 'brightness(0) invert(1)' } : {}),
+        }}
+        onError={() => {
+          if (src === SVG_SRC) {
+            setSrc(PNG_SRC);
+          } else {
+            setFailed(true);
+          }
+        }}
+      />
+    );
+  }
+
+  // ── Fallback placeholder (used only when the licensed asset isn't present) ──
   const blue = onDark ? '#FFFFFF' : '#003DA5';
   const inner = onDark ? '#003DA5' : '#FFFFFF';
   const wordmarkColor = onDark ? '#FFFFFF' : '#003DA5';
