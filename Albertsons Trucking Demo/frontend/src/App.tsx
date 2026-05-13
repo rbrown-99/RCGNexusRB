@@ -129,8 +129,6 @@ export default function App() {
 
       <footer>
         <span>Albertsons Companies — Logistics Demo</span>
-        <span className="foot-sep">·</span>
-        <span>Cold-chain VRP solver powered by Google OR-Tools</span>
       </footer>
     </div>
   );
