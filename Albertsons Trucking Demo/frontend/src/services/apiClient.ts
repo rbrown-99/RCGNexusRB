@@ -1,6 +1,14 @@
 import type { OptimizeResponse } from '../types';
 
-const BASE = (import.meta.env.VITE_BACKEND_URL as string) || 'http://localhost:8000';
+export const BASE = (import.meta.env.VITE_BACKEND_URL as string) || 'http://localhost:8000';
+
+export const SAMPLE_FILES = [
+  { key: 'orders',      label: 'Orders',      sublabel: '100 orders across 30 stores', filename: 'albertsons_sample_orders.csv',       icon: '📦' },
+  { key: 'locations',   label: 'Locations',   sublabel: 'DC + 30 store locations',     filename: 'albertsons_sample_locations.xlsx',   icon: '📍' },
+  { key: 'constraints', label: 'Constraints', sublabel: 'Trailers, weights, costs',    filename: 'albertsons_sample_constraints.xlsx', icon: '⚙️' },
+] as const;
+
+export const sampleUrl = (key: string) => `${BASE}/api/samples/${key}`;
 
 export async function parseFiles(orders: File, locations: File, constraints: File) {
   const fd = new FormData();

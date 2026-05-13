@@ -51,6 +51,10 @@ CUBE_SCALE = 1        # 1 cube
 SERVICE_TIME_MIN = 30 # minutes per stop (load/unload)
 DEPOT_OPEN_MIN = 0    # 00:00
 DEPOT_CLOSE_MIN = 24 * 60 - 1
+# Vehicles can run multi-day for far Montana/Wyoming hauls (HOS / 11-hr driver
+# cap is enforced as a soft warning by route_validator, not as a hard solver
+# constraint — otherwise no SLC→Kalispell round trip would be feasible).
+ROUTE_MAX_MINUTES = 60 * 60   # 60h ceiling per route
 
 
 def _minutes_from_midnight(t) -> int:
@@ -69,15 +73,17 @@ def _build_vehicle_fleet(
         per_truck_stops = max(1, trailer.max_stops)
         n = max(2, math.ceil(n_locations_with_demand / per_truck_stops) + 2)
         for k in range(n):
+            # Use single-stop cube cap as the solver's hard limit. The cube
+            # degradation curve (penalty for many stops) is enforced post-solve
+            # by route_validator → producing CUBE_OVER_CAPACITY exceptions when
+            # appropriate. Using the worst-case derate here makes the solver
+            # infeasible for individual high-cube store deliveries that any
+            # real trailer could carry on a single dispatch.
             fleet.append({
                 "vehicle_id": f"{trailer.trailer_config}-{k+1:02d}",
                 "trailer_config": trailer.trailer_config,
                 "max_weight_lbs": trailer.max_weight_lbs,
-                "max_cube_worst_case": min(
-                    (bundle.degradation_for(trailer.trailer_config).cube_for_stops(trailer.max_stops)
-                     if bundle.degradation_for(trailer.trailer_config) else trailer.max_cube_1stop),
-                    trailer.max_cube_1stop,
-                ),
+                "max_cube_worst_case": trailer.max_cube_1stop,
                 "max_stops": trailer.max_stops,
             })
     return fleet
@@ -204,14 +210,15 @@ def _solve_one_temp_group(
     routing.AddDimensionWithVehicleCapacity(cube_idx, 0, cube_caps, True, "Cube")
     routing.AddDimensionWithVehicleCapacity(stop_idx, 0, stop_caps, True, "Stops")
 
-    # time dimension with windows
-    routing.AddDimension(time_idx, 24 * 60, 24 * 60, False, "Time")
+    # time dimension with a 60-hour ceiling per route. We do NOT impose
+    # per-store hard windows here because (a) far Montana/Wyoming hauls span
+    # multiple business days under haversine fallback distances, and
+    # (b) the post-solve route_validator emits soft DELIVERY_LATE warnings
+    # using wall-clock arithmetic. Hard time windows in OR-Tools at this
+    # scale make the model INVALID.
+    routing.AddDimension(time_idx, ROUTE_MAX_MINUTES, ROUTE_MAX_MINUTES, False, "Time")
     time_dim = routing.GetDimensionOrDie("Time")
-    for node in range(1, n_nodes):
-        idx = manager.NodeToIndex(node)
-        open_, close_ = node_window[node]
-        time_dim.CumulVar(idx).SetRange(open_, close_)
-    # depot start window: any time
+    # depot start window: any time of day
     for v_idx in range(n_vehicles):
         time_dim.CumulVar(routing.Start(v_idx)).SetRange(DEPOT_OPEN_MIN, DEPOT_CLOSE_MIN)
 
@@ -422,7 +429,7 @@ def solve_vrp(
         "Cold chain separation: routes split by temperature group",
         "Cube degradation by stop count: capacity tightened post-solve",
         "Weight capacity per state (WY 40-40 combo limit applied where relevant)",
-        "Delivery time windows enforced as hard constraints",
+        "Delivery time windows: validated post-solve as soft constraints (DELIVERY_LATE warnings)",
         f"Distance source: {'Azure Maps Route Matrix (truck profile)' if matrix.used_azure_maps else 'Haversine fallback (great-circle x 1.3, 55 mph)'}",
     ]
     relaxed: list[str] = []

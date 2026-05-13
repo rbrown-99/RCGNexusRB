@@ -10,6 +10,7 @@ from .api import (
     optimize_router,
     parse_router,
     reoptimize_router,
+    samples_router,
     validate_router,
 )
 from .config import settings
@@ -35,5 +36,6 @@ def healthz():
 
 
 for router in (parse_router, optimize_router, validate_router,
-               reoptimize_router, compare_router, explain_router):
+               reoptimize_router, compare_router, explain_router,
+               samples_router):
     app.include_router(router)

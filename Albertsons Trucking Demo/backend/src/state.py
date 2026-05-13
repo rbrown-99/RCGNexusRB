@@ -8,7 +8,7 @@ import uuid
 from threading import Lock
 from typing import Any
 
-from ..models import ConstraintBundle, Location, OptimizationResult, Order
+from .models import ConstraintBundle, Location, OptimizationResult, Order
 
 
 class _Store:

@@ -6,6 +6,9 @@ import RouteSummaryTable from './components/RouteSummaryTable';
 import ExceptionsPanel from './components/ExceptionsPanel';
 import ConsiderationsPanel from './components/ConsiderationsPanel';
 import CostComparison from './components/CostComparison';
+import KpiCards from './components/KpiCards';
+import WelcomeCard from './components/WelcomeCard';
+import SampleDownloads from './components/SampleDownloads';
 import { optimizeFromSamples } from './services/apiClient';
 import type { OptimizeResponse } from './types';
 import './app.css';
@@ -36,14 +39,27 @@ export default function App() {
   return (
     <div className="app">
       <header>
-        <h1>Albertsons Truck Routing</h1>
-        <button onClick={runSample} disabled={busy}>
-          {busy ? 'Running…' : 'Run sample dataset'}
-        </button>
+        <div className="brand">
+          <span className="brand-mark" aria-hidden>A</span>
+          <div className="brand-text">
+            <span className="brand-name">Albertsons</span>
+            <span className="brand-tag">SLC Distribution Center · Route Optimization</span>
+          </div>
+        </div>
+        <div className="header-actions">
+          <span className="header-status">
+            {resp ? (
+              <><span className="dot dot-ok" /> {resp.result.routes.length} routes loaded</>
+            ) : (
+              <><span className="dot dot-idle" /> Ready</>
+            )}
+          </span>
+        </div>
       </header>
 
       <div className="grid">
         <aside className="left">
+          <SampleDownloads onRunSample={runSample} busy={busy} />
           <FileUpload onResult={handleResult} onSession={setSessionId} />
           <ChatInterface sessionId={sessionId} result={resp} onResult={handleResult} />
         </aside>
@@ -51,22 +67,36 @@ export default function App() {
         <main className="right">
           {resp ? (
             <>
+              <KpiCards result={resp.result} />
               <CostComparison result={resp.result} />
               <RouteMap routes={resp.result.routes} />
               <RouteSummaryTable routes={resp.result.routes} />
               <div className="two-col">
-                <ConsiderationsPanel items={resp.result.considerations} relaxed={resp.result.relaxed_constraints} />
+                <ConsiderationsPanel
+                  items={resp.result.considerations}
+                  relaxed={resp.result.relaxed_constraints}
+                />
                 <ExceptionsPanel items={resp.result.exceptions} />
               </div>
               {resp.distance_source === 'haversine_fallback' && (
-                <div className="note">Using haversine fallback for distances. Set <code>AZURE_MAPS_KEY</code> for truck-routed mileage.</div>
+                <div className="note">
+                  Distance fallback: this run used straight-line distances.
+                  Set <code>AZURE_MAPS_KEY</code> in the backend to enable
+                  truck-routed mileage.
+                </div>
               )}
             </>
           ) : (
-            <div className="placeholder">Upload files or click <em>Run sample dataset</em> to begin.</div>
+            <WelcomeCard />
           )}
         </main>
       </div>
+
+      <footer>
+        <span>Albertsons Companies — Logistics Demo</span>
+        <span className="foot-sep">·</span>
+        <span>Cold-chain VRP solver powered by Google OR-Tools</span>
+      </footer>
     </div>
   );
 }
