@@ -12,9 +12,10 @@ mermaid.initialize({
     secondaryColor: '#fbf8f1',
     tertiaryColor: '#ffffff',
     fontFamily: "'Segoe UI', sans-serif",
-    fontSize: '14px',
+    fontSize: '17px',
   },
-  flowchart: { htmlLabels: true, curve: 'basis', padding: 14 },
+  flowchart: { htmlLabels: true, curve: 'basis', padding: 20, nodeSpacing: 60, rankSpacing: 70 },
+  sequence: { actorFontSize: 16, noteFontSize: 14, messageFontSize: 14, boxMargin: 12, mirrorActors: true },
   securityLevel: 'loose',
 });
 

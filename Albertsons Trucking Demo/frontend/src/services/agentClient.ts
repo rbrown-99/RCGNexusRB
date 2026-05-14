@@ -321,7 +321,7 @@ function helpText(): string {
   ].join('\n');
 }
 
-function summarize(r: OptimizeResponse): string {
+export function summarize(r: OptimizeResponse): string {
   const res = r.result;
   const lines = [
     `**${res.total_routes} routes**, ${res.total_miles.toFixed(0)} miles, $${res.total_cost_usd.toFixed(0)} cost.`,

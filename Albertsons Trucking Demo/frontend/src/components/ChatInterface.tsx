@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ask, getSuggestions } from '../services/agentClient';
+import { ask, getSuggestions, summarize } from '../services/agentClient';
 import type { ChatMessage, OptimizeResponse } from '../types';
 
 interface Props {
@@ -17,6 +17,9 @@ export default function ChatInterface({ sessionId, result, scenario, onResult }:
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
+  // Tracks the last result we've already announced (either via a chat reply or
+  // via the auto-summary effect below) so we don't double-post.
+  const lastAnnouncedResultRef = useRef<OptimizeResponse | undefined>(undefined);
 
   const suggestions = useMemo(
     () => getSuggestions({ scenario, hasResult: !!result }),
@@ -41,6 +44,20 @@ export default function ChatInterface({ sessionId, result, scenario, onResult }:
     return () => window.removeEventListener('keydown', onKey);
   }, [expanded]);
 
+  // When a new optimization result arrives from outside the chat (e.g. the
+  // "Run optimization" button at the top, file upload, or sample scenario),
+  // post the same summary the agent would give if asked. Chat-initiated runs
+  // pre-stamp the ref inside `send()` so they don't double-post.
+  useEffect(() => {
+    if (!result) return;
+    if (result === lastAnnouncedResultRef.current) return;
+    lastAnnouncedResultRef.current = result;
+    const lead = scenario
+      ? `**Plan ready** — loaded *${scenario}*.\n\n`
+      : '**Plan ready.**\n\n';
+    setMessages((prev) => [...prev, { role: 'agent', content: lead + summarize(result) }]);
+  }, [result, scenario]);
+
   async function send(text: string) {
     const trimmed = text.trim();
     if (!trimmed) return;
@@ -51,7 +68,13 @@ export default function ChatInterface({ sessionId, result, scenario, onResult }:
     try {
       const reply = await ask(trimmed, { sessionId, result });
       setMessages([...next, { role: 'agent', content: reply.text }]);
-      if (reply.newResult) onResult(reply.newResult);
+      if (reply.newResult) {
+        // The reply already contains the summary, so flag this result as
+        // announced before bubbling it up to the parent — prevents the effect
+        // above from posting a duplicate when `result` flows back as a prop.
+        lastAnnouncedResultRef.current = reply.newResult;
+        onResult(reply.newResult);
+      }
     } catch (e: any) {
       setMessages([...next, { role: 'agent', content: `Error: ${e.message || e}` }]);
     } finally {
