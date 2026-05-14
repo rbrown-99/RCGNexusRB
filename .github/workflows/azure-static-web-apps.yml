@@ -32,6 +32,8 @@ jobs:
 
       - name: Install and build frontend
         working-directory: 'Albertsons Trucking Demo/frontend'
+        env:
+          VITE_BACKEND_URL: https://albrouting4yr5k6megl7yk-backend.purplecliff-a99ba37e.westus2.azurecontainerapps.io
         run: |
           npm ci
           npm run build
