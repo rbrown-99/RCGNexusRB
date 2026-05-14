@@ -74,20 +74,40 @@ async def optimize_endpoint(
 
 
 @router.post("/optimize-from-samples")
-async def optimize_from_samples(solver_seconds: Optional[int] = None):
-    """Convenience endpoint that runs against the bundled sample dataset."""
+async def optimize_from_samples(solver_seconds: Optional[int] = None, scenario: Optional[str] = None):
+    """Convenience endpoint that runs against the bundled sample dataset.
+
+    Pass ?scenario=<key> (standard_week | heavy_volume | tight_windows | long_haul_mix)
+    to load that scenario's data. Defaults to standard_week (legacy flat layout).
+    """
     secs = solver_seconds or settings.solver_seconds
     base = Path(settings.sample_data_dir).resolve()
     if not base.exists():
         # try repo-relative fallback
         base = Path(__file__).resolve().parents[3] / "sample_data"
-    parsed_orders = parse_orders(base / "sample_orders.csv")
-    parsed_locations = parse_locations(base / "sample_locations.xlsx")
-    parsed_bundle = parse_constraints(base / "sample_constraints.xlsx")
+
+    chosen = scenario or "standard_week"
+    scenario_dir = base / chosen
+    if scenario and not scenario_dir.exists():
+        raise HTTPException(404, f"unknown scenario {scenario!r}")
+
+    if scenario_dir.exists():
+        orders_path = scenario_dir / "orders.csv"
+        locations_path = scenario_dir / "locations.xlsx"
+        constraints_path = scenario_dir / "constraints.xlsx"
+    else:
+        # legacy flat layout fallback
+        orders_path = base / "sample_orders.csv"
+        locations_path = base / "sample_locations.xlsx"
+        constraints_path = base / "sample_constraints.xlsx"
+
+    parsed_orders = parse_orders(orders_path)
+    parsed_locations = parse_locations(locations_path)
+    parsed_bundle = parse_constraints(constraints_path)
     sid = store.create(parsed_orders, parsed_locations, parsed_bundle)
     persistence.save_session(
         sid, n_orders=len(parsed_orders), n_locations=len(parsed_locations),
-        n_constraints=1, source="samples",
+        n_constraints=1, source=f"samples:{chosen}",
     )
     persistence.save_purchase_orders(sid, parsed_orders)
     result, matrix = _run_pipeline(parsed_orders, parsed_locations, parsed_bundle, secs)
@@ -98,6 +118,7 @@ async def optimize_from_samples(solver_seconds: Optional[int] = None):
     )
     return {
         "session_id": sid,
+        "scenario": chosen,
         "distance_source": "azure_maps" if matrix.used_azure_maps else "haversine_fallback",
         "result": result.model_dump(),
     }

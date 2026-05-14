@@ -1,0 +1,17 @@
+{
+  "type": "function",
+  "function": {
+    "name": "sensitivity_lcv",
+    "description": "Sensitivity analysis: what if we had +N more units of a given trailer config tomorrow? Returns baseline vs scenario route counts, cost, miles, and which one the binding constraint is.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "session_id": {"type": "string"},
+        "extra_lcv_units": {"type": "integer", "minimum": 0, "maximum": 50, "description": "Number of extra units of the requested trailer config."},
+        "lcv_trailer_config": {"type": "string", "default": "SINGLE_53", "description": "Trailer config to add (must already exist in constraints)."}
+      },
+      "required": ["session_id", "extra_lcv_units"]
+    }
+  },
+  "endpoint": {"method": "POST", "path": "/api/sensitivity/lcv-availability/{session_id}", "content_type": "application/json"}
+}

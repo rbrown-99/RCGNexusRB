@@ -9,6 +9,8 @@ import CostComparison from './components/CostComparison';
 import KpiCards from './components/KpiCards';
 import WelcomeCard from './components/WelcomeCard';
 import SampleDownloads from './components/SampleDownloads';
+import DelayImpactPanel from './components/DelayImpactPanel';
+import SensitivityPanel from './components/SensitivityPanel';
 import ArchitecturePage from './components/ArchitecturePage';
 import GuidePage from './components/GuidePage';
 import BrandLogo from './components/BrandLogo';
@@ -23,13 +25,15 @@ export default function App() {
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<Tab>('optimizer');
+  const [lastRunScenario, setLastRunScenario] = useState<string | undefined>();
 
-  async function runSample() {
+  async function runSample(scenario: string) {
     setBusy(true);
     try {
-      const r = await optimizeFromSamples();
+      const r = await optimizeFromSamples(scenario);
       setResp(r);
       setSessionId(r.session_id);
+      setLastRunScenario(scenario);
     } catch (e: any) {
       alert(e.message || e);
     } finally {
@@ -40,6 +44,9 @@ export default function App() {
   function handleResult(r: OptimizeResponse) {
     setResp(r);
     setSessionId(r.session_id);
+    // Uploads/reoptimize don't carry a "scenario" tag; clear it so the picker
+    // hint doesn't lie.
+    setLastRunScenario(r.scenario);
   }
 
   const tabs: { id: Tab; label: string; icon: string }[] = [
@@ -81,7 +88,11 @@ export default function App() {
       {tab === 'optimizer' && (
         <div className="grid">
           <aside className="left">
-            <SampleDownloads onRunSample={runSample} busy={busy} />
+            <SampleDownloads
+              onRunSample={runSample}
+              busy={busy}
+              lastRunScenario={lastRunScenario}
+            />
             <FileUpload onResult={handleResult} onSession={setSessionId} />
             <ChatInterface sessionId={sessionId} result={resp} onResult={handleResult} />
           </aside>
@@ -92,13 +103,17 @@ export default function App() {
                 <KpiCards result={resp.result} />
                 <CostComparison result={resp.result} />
                 <RouteMap routes={resp.result.routes} />
-                <RouteSummaryTable routes={resp.result.routes} />
+                <RouteSummaryTable routes={resp.result.routes} exceptions={resp.result.exceptions} />
                 <div className="two-col">
                   <ConsiderationsPanel
                     items={resp.result.considerations}
                     relaxed={resp.result.relaxed_constraints}
                   />
                   <ExceptionsPanel items={resp.result.exceptions} />
+                </div>
+                <div className="two-col">
+                  <DelayImpactPanel sessionId={sessionId} routes={resp.result.routes} />
+                  <SensitivityPanel sessionId={sessionId} routes={resp.result.routes} />
                 </div>
                 {resp.distance_source === 'haversine_fallback' && (
                   <div className="note">

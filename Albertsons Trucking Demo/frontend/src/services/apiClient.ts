@@ -3,12 +3,28 @@ import type { OptimizeResponse } from '../types';
 export const BASE = (import.meta.env.VITE_BACKEND_URL as string) || 'http://localhost:8000';
 
 export const SAMPLE_FILES = [
-  { key: 'orders',      label: 'Orders',      sublabel: '100 orders across 30 stores', filename: 'albertsons_sample_orders.csv',       icon: '📦' },
-  { key: 'locations',   label: 'Locations',   sublabel: 'DC + 30 store locations',     filename: 'albertsons_sample_locations.xlsx',   icon: '📍' },
-  { key: 'constraints', label: 'Constraints', sublabel: 'Trailers, weights, costs',    filename: 'albertsons_sample_constraints.xlsx', icon: '⚙️' },
+  { key: 'orders',      label: 'Orders',      sublabel: 'Daily order list',          filename: 'albertsons_orders.csv',       icon: '📦' },
+  { key: 'locations',   label: 'Locations',   sublabel: 'DC + ~30 store locations',  filename: 'albertsons_locations.xlsx',   icon: '📍' },
+  { key: 'constraints', label: 'Constraints', sublabel: 'Trailers, weights, costs',  filename: 'albertsons_constraints.xlsx', icon: '⚙️' },
 ] as const;
 
-export const sampleUrl = (key: string) => `${BASE}/api/samples/${key}`;
+export interface ScenarioCatalogItem {
+  key: string;
+  label: string;
+  blurb: string;
+  highlights: string[];
+}
+
+export const sampleUrl = (key: string, scenario?: string) =>
+  scenario
+    ? `${BASE}/api/samples/${key}?scenario=${encodeURIComponent(scenario)}`
+    : `${BASE}/api/samples/${key}`;
+
+export async function getSampleCatalog(): Promise<{ scenarios: ScenarioCatalogItem[] }> {
+  const r = await fetch(`${BASE}/api/samples/`);
+  if (!r.ok) throw new Error(`samples catalog failed: ${await r.text()}`);
+  return r.json();
+}
 
 export async function parseFiles(orders: File, locations: File, constraints: File) {
   const fd = new FormData();
@@ -31,8 +47,11 @@ export async function optimize(opts: { sessionId?: string; orders?: File; locati
   return r.json();
 }
 
-export async function optimizeFromSamples(): Promise<OptimizeResponse> {
-  const r = await fetch(`${BASE}/api/optimize-from-samples`, { method: 'POST' });
+export async function optimizeFromSamples(scenario?: string): Promise<OptimizeResponse> {
+  const url = scenario
+    ? `${BASE}/api/optimize-from-samples?scenario=${encodeURIComponent(scenario)}`
+    : `${BASE}/api/optimize-from-samples`;
+  const r = await fetch(url, { method: 'POST' });
   if (!r.ok) throw new Error(`optimize-from-samples failed: ${await r.text()}`);
   return r.json();
 }
@@ -56,5 +75,25 @@ export async function explain(sessionId: string, routeId: string) {
 export async function validate(sessionId: string) {
   const r = await fetch(`${BASE}/api/validate/${sessionId}`, { method: 'POST' });
   if (!r.ok) throw new Error(`validate failed: ${await r.text()}`);
+  return r.json();
+}
+
+export async function delayImpact(sessionId: string, routeId: string, delayMinutes: number) {
+  const r = await fetch(`${BASE}/api/delay-impact/${sessionId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ route_id: routeId, delay_minutes: delayMinutes }),
+  });
+  if (!r.ok) throw new Error(`delay-impact failed: ${await r.text()}`);
+  return r.json();
+}
+
+export async function sensitivityLcv(sessionId: string, extraUnits: number, lcvConfig = 'SINGLE_53') {
+  const r = await fetch(`${BASE}/api/sensitivity/lcv-availability/${sessionId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ extra_lcv_units: extraUnits, lcv_trailer_config: lcvConfig }),
+  });
+  if (!r.ok) throw new Error(`sensitivity-lcv failed: ${await r.text()}`);
   return r.json();
 }

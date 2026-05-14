@@ -44,6 +44,16 @@ export interface NaiveBaseline {
   total_cost_usd: number;
 }
 
+export interface SplitFinding {
+  location_code: string;
+  location_name?: string;
+  route_ids: string[];
+  total_weight_lbs: number;
+  total_cube: number;
+  total_cases?: number;
+  reason: string;
+}
+
 export interface OptimizationResult {
   routes: Route[];
   exceptions: ExceptionItem[];
@@ -59,15 +69,24 @@ export interface OptimizationResult {
   savings_percent: number;
   solver_status: string;
   solve_seconds: number;
+  splits?: SplitFinding[];
 }
 
 export interface OptimizeResponse {
   session_id: string;
   distance_source?: string;
+  scenario?: string;
   result: OptimizationResult;
 }
 
 export interface ChatMessage {
   role: 'user' | 'agent';
   content: string;
+}
+
+export interface ScenarioInfo {
+  key: string;
+  label: string;
+  blurb: string;
+  highlights: string[];
 }

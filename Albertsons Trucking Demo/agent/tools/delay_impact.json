@@ -1,0 +1,17 @@
+{
+  "type": "function",
+  "function": {
+    "name": "delay_impact",
+    "description": "Project a delay through one route. Given a route_id and delay_minutes, returns the original and projected arrivals for every stop, the list of stops that would newly miss their window, and a one-line summary. Does NOT re-solve the routes.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "session_id": {"type": "string"},
+        "route_id": {"type": "string", "description": "e.g. 'R03-SINGLE_53-COOLER_34_38F'"},
+        "delay_minutes": {"type": "integer", "minimum": 0, "maximum": 1440}
+      },
+      "required": ["session_id", "route_id", "delay_minutes"]
+    }
+  },
+  "endpoint": {"method": "POST", "path": "/api/delay-impact/{session_id}", "content_type": "application/json"}
+}

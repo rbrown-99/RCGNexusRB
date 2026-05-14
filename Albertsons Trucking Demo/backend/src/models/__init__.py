@@ -8,11 +8,11 @@ from .constraint import (
     CostProxy,
     ConstraintBundle,
 )
-from .route import RouteStop, Route, OptimizationResult, Exception_, NaiveBaseline
+from .route import RouteStop, Route, OptimizationResult, Exception_, NaiveBaseline, SplitFinding
 
 __all__ = [
     "Order", "Location",
     "TrailerConfig", "CubeDegradation", "RoadRestriction", "CostProxy",
     "ConstraintBundle",
-    "RouteStop", "Route", "OptimizationResult", "Exception_", "NaiveBaseline",
+    "RouteStop", "Route", "OptimizationResult", "Exception_", "NaiveBaseline", "SplitFinding",
 ]

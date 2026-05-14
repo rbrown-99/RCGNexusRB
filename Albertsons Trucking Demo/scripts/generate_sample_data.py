@@ -1,16 +1,28 @@
-"""Generate synthetic Albertsons routing sample data.
+"""Generate synthetic Albertsons routing sample data for FOUR scenarios.
 
-Outputs:
-  sample_data/sample_orders.csv
-  sample_data/sample_locations.xlsx
-  sample_data/sample_constraints.xlsx
+Outputs (per scenario):
+  sample_data/<scenario>/orders.csv
+  sample_data/<scenario>/locations.xlsx
+  sample_data/<scenario>/constraints.xlsx
 
-Deterministic via fixed RNG seed.
+Scenarios:
+  standard_week   — balanced; ordinary Monday dispatch (the original demo set).
+  heavy_volume    — orders ~2x cube/weight; expected to trigger CUBE_NEAR/OVER, splits, lower utilization warnings.
+  tight_windows   — store delivery windows compressed to 4-hour slots; expected to trigger WINDOW_AT_RISK + DELIVERY_LATE.
+  long_haul_mix   — order weight skewed toward MT/WY destinations + tighter HOS; expected to trigger LAYOVER_REQUIRED + LCB_OFF_INTERSTATE.
+
+Also keeps the legacy flat layout (sample_data/sample_orders.csv, etc.) for backward
+compatibility with the existing /api/optimize-from-samples behavior — the legacy
+files mirror the standard_week scenario.
+
+Deterministic via fixed RNG seeds per scenario.
 """
 from __future__ import annotations
 
+import copy
 import csv
 import random
+from datetime import time
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -19,13 +31,12 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "sample_data"
 OUT.mkdir(parents=True, exist_ok=True)
 
-SEED = 20260512
-random.seed(SEED)
+BASE_SEED = 20260512
+
 
 # ---------------------------------------------------------------------------
-# Locations (DC + ~32 stores + 2 backhaul/vendor)
+# Locations (DC + ~32 stores + 2 backhaul/vendor) — shared across scenarios
 # ---------------------------------------------------------------------------
-# Coordinates per the project prompt.
 LOCATIONS: list[dict] = [
     # DC (origin)
     {"location_code": "SLC-DC", "location_name": "Salt Lake City Distribution Center",
@@ -200,6 +211,7 @@ LOCATIONS: list[dict] = [
 ]
 
 STORE_CODES = [loc["location_code"] for loc in LOCATIONS if loc["location_type"] == "STORE"]
+LONG_HAUL_CODES = [c for c in STORE_CODES if "MT-" in c or "WY-" in c]
 
 
 # ---------------------------------------------------------------------------
@@ -212,40 +224,14 @@ COMMODITY_TO_TEMP = {
     "PRODUCE":      "COOLER_34_38F",
 }
 
-def _gen_orders(n_target: int = 100) -> list[dict]:
-    orders: list[dict] = []
-    order_idx = 1
-    # Ensure every store gets at least one order; many get 2-4 across commodities.
-    for code in STORE_CODES:
-        n = random.choices([1, 2, 3, 4], weights=[15, 35, 35, 15])[0]
-        commodities = random.sample(list(COMMODITY_TO_TEMP.keys()), k=min(n, 4))
-        for commodity in commodities:
-            orders.append(_make_order(order_idx, code, commodity))
-            order_idx += 1
 
-    # Add cross-dock-heavy orders to a couple of larger stores to test cross-dock handling.
-    crossdock_targets = ["ALB-ID-BOI", "SAF-UT-OGD", "ALB-MT-MISA"]
-    for code in crossdock_targets:
-        for _ in range(3):
-            orders.append(_make_order(order_idx, code, random.choice(list(COMMODITY_TO_TEMP)),
-                                      force_crossdock=True))
-            order_idx += 1
-
-    # Pad with random extras until we hit target count.
-    while len(orders) < n_target:
-        orders.append(_make_order(order_idx, random.choice(STORE_CODES),
-                                   random.choice(list(COMMODITY_TO_TEMP))))
-        order_idx += 1
-
-    return orders
-
-
-def _make_order(idx: int, location_code: str, commodity: str,
+def _make_order(rng: random.Random, idx: int, location_code: str, commodity: str,
+                weight_mult: float = 1.0, cube_mult: float = 1.0,
                 force_crossdock: bool | None = None) -> dict:
-    weight = random.randint(500, 12000)
-    cube = random.randint(80, 800)
-    cases = random.randint(20, 300)
-    is_crossdock = force_crossdock if force_crossdock is not None else random.random() < 0.30
+    weight = int(rng.randint(500, 12000) * weight_mult)
+    cube = int(rng.randint(80, 800) * cube_mult)
+    cases = rng.randint(20, 300)
+    is_crossdock = force_crossdock if force_crossdock is not None else rng.random() < 0.30
     return {
         "order_id":               f"PO-20260512-{idx:03d}",
         "location_code":          location_code,
@@ -261,8 +247,117 @@ def _make_order(idx: int, location_code: str, commodity: str,
     }
 
 
+def _gen_orders_standard(rng: random.Random, n_target: int = 70) -> list[dict]:
+    orders: list[dict] = []
+    idx = 1
+    for code in STORE_CODES:
+        n = rng.choices([1, 2, 3], weights=[35, 50, 15])[0]
+        commodities = rng.sample(list(COMMODITY_TO_TEMP), k=min(n, 4))
+        for commodity in commodities:
+            orders.append(_make_order(rng, idx, code, commodity,
+                                      weight_mult=0.65, cube_mult=0.65))
+            idx += 1
+    for code in ["ALB-ID-BOI", "SAF-UT-OGD", "ALB-MT-MISA"]:
+        for _ in range(2):
+            orders.append(_make_order(rng, idx, code, rng.choice(list(COMMODITY_TO_TEMP)),
+                                      weight_mult=0.7, cube_mult=0.7,
+                                      force_crossdock=True))
+            idx += 1
+    while len(orders) < n_target:
+        orders.append(_make_order(rng, idx, rng.choice(STORE_CODES),
+                                   rng.choice(list(COMMODITY_TO_TEMP)),
+                                   weight_mult=0.65, cube_mult=0.65))
+        idx += 1
+    return orders
+
+
+def _gen_orders_heavy(rng: random.Random, n_target: int = 110) -> list[dict]:
+    """Heavier per-order cube + weight; expect splits and cube/weight near-cap warnings."""
+    orders: list[dict] = []
+    idx = 1
+    # Each store: 2-5 large orders.
+    for code in STORE_CODES:
+        n = rng.choices([2, 3, 4, 5], weights=[15, 30, 35, 20])[0]
+        commodities = rng.sample(list(COMMODITY_TO_TEMP), k=min(n, 4)) + \
+                      rng.choices(list(COMMODITY_TO_TEMP), k=max(0, n - 4))
+        for commodity in commodities:
+            orders.append(_make_order(rng, idx, code, commodity,
+                                      weight_mult=1.7, cube_mult=1.6))
+            idx += 1
+    # Force a few mega-orders to a couple stores so we trigger split detection.
+    for code in ("ALB-ID-BOI", "SAF-UT-OGD", "ALB-MT-MISA"):
+        for _ in range(2):
+            orders.append(_make_order(rng, idx, code, "DRY", weight_mult=2.4, cube_mult=2.4))
+            idx += 1
+            orders.append(_make_order(rng, idx, code, "REFRIGERATED", weight_mult=2.0, cube_mult=2.0))
+            idx += 1
+    while len(orders) < n_target:
+        orders.append(_make_order(rng, idx, rng.choice(STORE_CODES),
+                                   rng.choice(list(COMMODITY_TO_TEMP)),
+                                   weight_mult=1.5, cube_mult=1.4))
+        idx += 1
+    return orders
+
+
+def _gen_orders_tight(rng: random.Random, n_target: int = 100) -> list[dict]:
+    """Same volumes as standard; window adjustments live in the locations file."""
+    return _gen_orders_standard(rng, n_target)
+
+
+def _gen_orders_long_haul(rng: random.Random, n_target: int = 90) -> list[dict]:
+    """Skew demand toward MT/WY (long haul); expect LAYOVER_REQUIRED and LCB_OFF_INTERSTATE."""
+    orders: list[dict] = []
+    idx = 1
+    # Heavy load on long-haul stores
+    for code in LONG_HAUL_CODES:
+        for _ in range(3):
+            orders.append(_make_order(rng, idx, code,
+                                      rng.choice(list(COMMODITY_TO_TEMP)),
+                                      weight_mult=1.4, cube_mult=1.3))
+            idx += 1
+    # Lighter coverage on remaining stores
+    for code in STORE_CODES:
+        if code in LONG_HAUL_CODES:
+            continue
+        for _ in range(rng.randint(1, 2)):
+            orders.append(_make_order(rng, idx, code, rng.choice(list(COMMODITY_TO_TEMP))))
+            idx += 1
+    while len(orders) < n_target:
+        orders.append(_make_order(rng, idx, rng.choice(STORE_CODES),
+                                   rng.choice(list(COMMODITY_TO_TEMP))))
+        idx += 1
+    return orders
+
+
 # ---------------------------------------------------------------------------
-# Constraints workbook
+# Per-scenario location adjustments
+# ---------------------------------------------------------------------------
+def _locations_standard() -> list[dict]:
+    return [dict(loc) for loc in LOCATIONS]
+
+
+def _locations_tight_windows() -> list[dict]:
+    """Compress every store's delivery window to 4 hours starting at original open.
+    DC + vendor + backhaul are unchanged."""
+    out = []
+    for loc in LOCATIONS:
+        new = dict(loc)
+        if loc["location_type"] == "STORE":
+            open_str = loc["delivery_window_open"]
+            h, m = map(int, open_str.split(":"))
+            close_h = min(23, h + 4)
+            new["delivery_window_close"] = f"{close_h:02d}:{m:02d}"
+        out.append(new)
+    return out
+
+
+def _locations_long_haul() -> list[dict]:
+    """Long-haul stores keep 06:00–20:00. Other stores unchanged. (No structural change.)"""
+    return [dict(loc) for loc in LOCATIONS]
+
+
+# ---------------------------------------------------------------------------
+# Constraints
 # ---------------------------------------------------------------------------
 TRAILER_TYPES = [
     {"trailer_config": "40-40_COMBO", "description": "Two 40-foot trailers (doubles)",
@@ -274,7 +369,6 @@ TRAILER_TYPES = [
     {"trailer_config": "SINGLE_53", "description": "Single 53-foot trailer",
      "max_weight_lbs": 80000, "max_cube_1stop": 3400, "max_stops": 8},
 ]
-
 CUBE_DEGRADATION = [
     {"trailer_config": "40-40_COMBO",
      "stops_1": 3020, "stops_2": 2980, "stops_3": 2940, "stops_4": 2900,
@@ -289,7 +383,6 @@ CUBE_DEGRADATION = [
      "stops_1": 3400, "stops_2": 3360, "stops_3": 3320, "stops_4": 3280,
      "stops_5": 3240, "stops_6": 3200, "stops_7": 3160, "stops_8": 3120},
 ]
-
 ROAD_RESTRICTIONS = [
     {"state": "MT", "trailer_config": "40-40_COMBO", "restriction_type": "INTERSTATE_ONLY",
      "restriction_detail": "Max 2 miles off interstate"},
@@ -314,14 +407,21 @@ ROAD_RESTRICTIONS = [
     {"state": "NV", "trailer_config": "40-40_COMBO", "restriction_type": "INTERSTATE_ONLY",
      "restriction_detail": "Max 5 miles off interstate"},
 ]
-
-COST_PROXIES = [
+COST_PROXIES_DEFAULT = [
     {"cost_type": "per_mile",              "value": 4.00,   "unit": "USD"},
     {"cost_type": "per_stop",              "value": 30.00,  "unit": "USD"},
     {"cost_type": "overtime_hour",         "value": 45.00,  "unit": "USD"},
     {"cost_type": "late_delivery_penalty", "value": 500.00, "unit": "USD"},
     {"cost_type": "driver_hourly_rate",    "value": 28.00,  "unit": "USD"},
     {"cost_type": "max_driver_hours",      "value": 11.0,   "unit": "hours"},
+]
+COST_PROXIES_LONG_HAUL = [
+    {"cost_type": "per_mile",              "value": 4.00,   "unit": "USD"},
+    {"cost_type": "per_stop",              "value": 30.00,  "unit": "USD"},
+    {"cost_type": "overtime_hour",         "value": 45.00,  "unit": "USD"},
+    {"cost_type": "late_delivery_penalty", "value": 500.00, "unit": "USD"},
+    {"cost_type": "driver_hourly_rate",    "value": 28.00,  "unit": "USD"},
+    {"cost_type": "max_driver_hours",      "value": 10.0,   "unit": "hours"},  # tighter HOS to trigger LAYOVER warnings
 ]
 
 
@@ -330,7 +430,6 @@ COST_PROXIES = [
 # ---------------------------------------------------------------------------
 def _write_workbook(path: Path, sheets: dict[str, list[dict]]) -> None:
     wb = Workbook()
-    # remove the default sheet
     default = wb.active
     wb.remove(default)
     for name, rows in sheets.items():
@@ -352,24 +451,94 @@ def _write_orders_csv(path: Path, orders: list[dict]) -> None:
         writer.writerows(orders)
 
 
-def main() -> None:
-    orders = _gen_orders(100)
-    _write_orders_csv(OUT / "sample_orders.csv", orders)
+# ---------------------------------------------------------------------------
+# Scenario runners
+# ---------------------------------------------------------------------------
+SCENARIOS = {
+    "standard_week": {
+        "label": "Standard Week",
+        "description": "Balanced ordinary Monday dispatch — most routes on time, low exception count.",
+        "orders": _gen_orders_standard,
+        "locations": _locations_standard,
+        "constraints": COST_PROXIES_DEFAULT,
+    },
+    "heavy_volume": {
+        "label": "Heavy Volume",
+        "description": "Roughly 2× per-order weight + cube. Triggers cube/weight near-cap warnings and forces splits.",
+        "orders": _gen_orders_heavy,
+        "locations": _locations_standard,
+        "constraints": COST_PROXIES_DEFAULT,
+    },
+    "tight_windows": {
+        "label": "Tight Windows",
+        "description": "Every store's delivery window compressed to 4 hours. Triggers WINDOW_AT_RISK and DELIVERY_LATE.",
+        "orders": _gen_orders_tight,
+        "locations": _locations_tight_windows,
+        "constraints": COST_PROXIES_DEFAULT,
+    },
+    "long_haul_mix": {
+        "label": "Long-haul Mix",
+        "description": "Demand skewed to MT/WY long-haul stores + tighter 10-hour HOS cap. Triggers LAYOVER and LCB_OFF_INTERSTATE.",
+        "orders": _gen_orders_long_haul,
+        "locations": _locations_long_haul,
+        "constraints": COST_PROXIES_LONG_HAUL,
+    },
+}
+
+
+def _emit_scenario(key: str, spec: dict) -> None:
+    rng = random.Random(BASE_SEED + sum(ord(c) for c in key))
+    orders = spec["orders"](rng)
+    locations = spec["locations"]()
+    constraints = spec["constraints"]
+
+    folder = OUT / key
+    folder.mkdir(parents=True, exist_ok=True)
+    _write_orders_csv(folder / "orders.csv", orders)
+    _write_workbook(folder / "locations.xlsx", {"locations": locations})
+    _write_workbook(folder / "constraints.xlsx", {
+        "trailer_types":            TRAILER_TYPES,
+        "cube_degradation":         CUBE_DEGRADATION,
+        "state_road_restrictions":  ROAD_RESTRICTIONS,
+        "cost_proxies":             constraints,
+    })
+    print(f"  [{key}] {len(orders)} orders, {len(locations)} locations -> {folder}")
+
+
+def _emit_legacy_files(standard_orders: list[dict]) -> None:
+    """Keep the original sample_data/sample_*.* layout in place so nothing breaks."""
+    _write_orders_csv(OUT / "sample_orders.csv", standard_orders)
     _write_workbook(OUT / "sample_locations.xlsx", {"locations": LOCATIONS})
     _write_workbook(OUT / "sample_constraints.xlsx", {
         "trailer_types":            TRAILER_TYPES,
         "cube_degradation":         CUBE_DEGRADATION,
         "state_road_restrictions":  ROAD_RESTRICTIONS,
-        "cost_proxies":             COST_PROXIES,
+        "cost_proxies":             COST_PROXIES_DEFAULT,
     })
+    print(f"  [legacy] sample_orders.csv, sample_locations.xlsx, sample_constraints.xlsx")
 
-    # quick consistency check
+
+def main() -> None:
+    print("Generating scenario datasets:")
+    standard_orders = None
+    for key, spec in SCENARIOS.items():
+        _emit_scenario(key, spec)
+        if key == "standard_week":
+            # also capture the standard orders for legacy emission below
+            rng = random.Random(BASE_SEED + sum(ord(c) for c in key))
+            standard_orders = spec["orders"](rng)
+    if standard_orders:
+        _emit_legacy_files(standard_orders)
+
+    # Consistency check across all scenarios.
     loc_codes = {loc["location_code"] for loc in LOCATIONS}
-    missing = {o["location_code"] for o in orders} - loc_codes
-    assert not missing, f"orders reference unknown locations: {missing}"
+    for key in SCENARIOS:
+        with (OUT / key / "orders.csv").open(encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            missing = {row["location_code"] for row in reader} - loc_codes
+            assert not missing, f"[{key}] orders reference unknown locations: {missing}"
 
-    print(f"Wrote {len(orders)} orders, {len(LOCATIONS)} locations, "
-          f"{len(TRAILER_TYPES)} trailer types, {len(ROAD_RESTRICTIONS)} road restrictions.")
+    print(f"OK. {len(SCENARIOS)} scenarios + legacy files written to {OUT}")
 
 
 if __name__ == "__main__":

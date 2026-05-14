@@ -56,6 +56,17 @@ class NaiveBaseline(BaseModel):
     total_cost_usd: float
 
 
+class SplitFinding(BaseModel):
+    """A single store whose volume forced delivery on >1 route on the same day."""
+    location_code: str
+    location_name: str | None = None
+    route_ids: list[str]
+    total_weight_lbs: float
+    total_cube: float
+    total_cases: int | None = None
+    reason: str  # "weight_over_one_trailer" | "cube_over_one_trailer" | "mixed_temp_zones" | "stop_count_cap" | "other"
+
+
 class OptimizationResult(BaseModel):
     routes: list[Route]
     exceptions: list[Exception_]
@@ -71,3 +82,4 @@ class OptimizationResult(BaseModel):
     savings_percent: float
     solver_status: str
     solve_seconds: float
+    splits: list[SplitFinding] = Field(default_factory=list)

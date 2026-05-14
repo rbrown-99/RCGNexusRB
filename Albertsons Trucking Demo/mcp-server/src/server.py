@@ -99,15 +99,55 @@ async def reoptimize(
     remove_trailer_configs: list[str] | None = None,
     remove_locations: list[str] | None = None,
     remove_orders: list[str] | None = None,
+    capacity_relaxation_pct: float | None = None,
+    window_slack_minutes: int | None = None,
+    priority_first: list[str] | None = None,
+    weather_overrides: dict[str, list[str]] | None = None,
     notes: str | None = None,
 ) -> dict:
-    """Re-run the optimizer with constraint overrides (drop trailers, drop stores, drop orders)."""
+    """Re-run the optimizer with what-if overrides.
+
+    Knobs:
+      remove_trailer_configs     drop a trailer fleet (e.g. ["45-45_COMBO"])
+      remove_locations           drop store(s)
+      remove_orders              drop specific order ids
+      capacity_relaxation_pct    loosen weight + cube cap by this fraction (e.g. 0.05 for 5%)
+      window_slack_minutes       widen every store delivery window by N minutes per side
+      priority_first             force these store codes to be the first stop on their route
+      weather_overrides          {state_code: [allowed_trailer_configs,...]} — restrict fleet for that state
+      notes                      free-form note added to result.considerations
+    """
     body: dict[str, Any] = {}
     if remove_trailer_configs: body["remove_trailer_configs"] = remove_trailer_configs
     if remove_locations:       body["remove_locations"] = remove_locations
     if remove_orders:          body["remove_orders"] = remove_orders
-    if notes:                  body["notes"] = notes
+    if capacity_relaxation_pct is not None: body["capacity_relaxation_pct"] = capacity_relaxation_pct
+    if window_slack_minutes:   body["window_slack_minutes"] = window_slack_minutes
+    if priority_first:         body["priority_first"] = priority_first
+    if weather_overrides:      body["weather_overrides"] = weather_overrides
+    if notes:                  body["extra_consideration"] = notes
     return await _post(f"/api/reoptimize/{session_id}", json=body)
+
+
+@mcp.tool()
+async def delay_impact(session_id: str, route_id: str, delay_minutes: int) -> dict:
+    """Project a delay through one route. Returns which stops would miss their window
+    if the route were held by the given number of minutes (no re-solve)."""
+    return await _post(
+        f"/api/delay-impact/{session_id}",
+        json={"route_id": route_id, "delay_minutes": delay_minutes},
+    )
+
+
+@mcp.tool()
+async def sensitivity_lcv(
+    session_id: str, extra_lcv_units: int, lcv_trailer_config: str = "SINGLE_53"
+) -> dict:
+    """Sensitivity analysis: what if we had +N more units of a given trailer config?"""
+    return await _post(
+        f"/api/sensitivity/lcv-availability/{session_id}",
+        json={"extra_lcv_units": extra_lcv_units, "lcv_trailer_config": lcv_trailer_config},
+    )
 
 
 @mcp.tool()

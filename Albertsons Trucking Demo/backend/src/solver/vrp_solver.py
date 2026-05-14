@@ -37,6 +37,7 @@ from ..models import (
     Order,
     Route,
     RouteStop,
+    SplitFinding,
 )
 from ..parser.orders_parser import aggregate_demand
 from .constraint_encoder import effective_weight_capacity, relevant_restrictions
@@ -62,14 +63,23 @@ def _minutes_from_midnight(t) -> int:
 
 
 def _build_vehicle_fleet(
-    bundle: ConstraintBundle, n_locations_with_demand: int
+    bundle: ConstraintBundle,
+    n_locations_with_demand: int,
+    *,
+    excluded_configs: set[str] | None = None,
 ) -> list[dict]:
-    """Return a flat list of vehicle dicts (capacity-rich for the solver)."""
+    """Return a flat list of vehicle dicts (capacity-rich for the solver).
+
+    excluded_configs : trailer configs to drop entirely (e.g. weather override).
+    """
+    excluded = excluded_configs or set()
     fleet: list[dict] = []
     # Provide enough vehicles per config to cover any feasible scenario. A loose
     # upper bound is one vehicle per stop per config, but that is wasteful.
     # We use ceil(n / max_stops) + 2 per config.
     for trailer in bundle.trailer_types:
+        if trailer.trailer_config in excluded:
+            continue
         per_truck_stops = max(1, trailer.max_stops)
         n = max(2, math.ceil(n_locations_with_demand / per_truck_stops) + 2)
         for k in range(n):
@@ -97,9 +107,31 @@ def _solve_one_temp_group(
     matrix: CostMatrix,
     bundle: ConstraintBundle,
     solver_seconds: int,
+    *,
+    capacity_relaxation_pct: float = 0.0,
+    window_slack_minutes: int = 0,
+    weather_overrides: dict[str, list[str]] | None = None,
+    priority_first: list[str] | None = None,
 ) -> tuple[list[Route], list[Exception_], str]:
     if not demands:
         return [], [], "EMPTY"
+
+    weather_overrides = weather_overrides or {}
+    priority_first = priority_first or []
+
+    # --- Determine excluded trailer configs from weather overrides --------
+    # If this temp group has any demand in a state listed in weather_overrides,
+    # any trailer config not on that state's allow-list is excluded for the whole
+    # temp group (operationally safe: avoids the chance of being routed there).
+    states_with_demand = {locations[d["location_code"]].state for d in demands}
+    excluded_configs: set[str] = set()
+    for state, allowed_configs in weather_overrides.items():
+        if state not in states_with_demand:
+            continue
+        allowed_set = {c.strip() for c in allowed_configs}
+        for trailer in bundle.trailer_types:
+            if trailer.trailer_config not in allowed_set:
+                excluded_configs.add(trailer.trailer_config)
 
     # --- Node construction ------------------------------------------------
     # node 0 = depot, nodes 1..N = demand locations
@@ -116,10 +148,12 @@ def _solve_one_temp_group(
         node_locations.append(loc)
         node_weights.append(int(round(d["weight_lbs"] * WEIGHT_SCALE)))
         node_cubes.append(int(round(d["cube"] * CUBE_SCALE)))
-        node_window.append((
-            _minutes_from_midnight(loc.delivery_window_open),
-            _minutes_from_midnight(loc.delivery_window_close),
-        ))
+        # Apply symmetric window slack (Q6 reoptimize knob).
+        open_m = max(DEPOT_OPEN_MIN,
+                     _minutes_from_midnight(loc.delivery_window_open) - window_slack_minutes)
+        close_m = min(DEPOT_CLOSE_MIN,
+                      _minutes_from_midnight(loc.delivery_window_close) + window_slack_minutes)
+        node_window.append((open_m, close_m))
         node_orders.append(list(d["order_ids"]))
 
     n_nodes = len(node_codes)
@@ -142,8 +176,11 @@ def _solve_one_temp_group(
             time_int[i][j] = int(round(travel + service))
 
     # --- Vehicle fleet ----------------------------------------------------
-    fleet = _build_vehicle_fleet(bundle, n_demand_nodes)
+    fleet = _build_vehicle_fleet(bundle, n_demand_nodes, excluded_configs=excluded_configs)
     n_vehicles = len(fleet)
+    if n_vehicles == 0:
+        return [], [Exception_(severity="VIOLATION", code="NO_FLEET",
+                               message=f"All trailer configs excluded for {temp_group} (weather override leaves no fleet)")], "INFEASIBLE"
 
     weight_caps: list[int] = []
     cube_caps: list[int] = []
@@ -154,14 +191,17 @@ def _solve_one_temp_group(
     per_mile = bundle.cost("per_mile", 4.0)
     per_stop = bundle.cost("per_stop", 30.0)
 
+    # Capacity relaxation knob (Q5 — Phase 2). Apply equally to weight + cube.
+    cap_mult = 1.0 + max(0.0, capacity_relaxation_pct)
+
     # Distance arc cost = per_mile * miles. We pass that as cost/distance unit.
     # OR-Tools wants integer costs. We use cost-per-unit-distance = per_mile (then
     # divide by DIST_SCALE on output). Keep as int per-100-miles -> per_mile * 100.
     arc_cost_per_unit = max(1, int(round(per_mile * 100)))  # cost units per scaled-mile
 
     for v in fleet:
-        weight_caps.append(int(round(v["max_weight_lbs"] * WEIGHT_SCALE)))
-        cube_caps.append(int(round(v["max_cube_worst_case"] * CUBE_SCALE)))
+        weight_caps.append(int(round(v["max_weight_lbs"] * WEIGHT_SCALE * cap_mult)))
+        cube_caps.append(int(round(v["max_cube_worst_case"] * CUBE_SCALE * cap_mult)))
         stop_caps.append(v["max_stops"])
         vehicle_costs_per_unit_dist.append(arc_cost_per_unit)
         # small fixed cost so unused trucks stay unused
@@ -335,6 +375,46 @@ def _solve_one_temp_group(
         ))
         route_seq += 1
 
+    # --- Post-solve priority_first reorder (Phase 2) ---------------------
+    # For each priority code, find the route serving it and shift it to
+    # position 1 (first non-DC stop). Recompute arrival times using the
+    # cost matrix (does NOT change vehicle assignment, only sequence).
+    if priority_first:
+        priority_set = {c.strip() for c in priority_first if c and c.strip()}
+        depot_idx = matrix.index_of(depot_location.location_code)
+        for r in routes:
+            for prio in priority_set:
+                idx = next((i for i, s in enumerate(r.stops) if s.location_code == prio), -1)
+                if idx <= 0:
+                    continue
+                # move to head
+                stop = r.stops.pop(idx)
+                r.stops.insert(0, stop)
+                # recompute sequence + arrival
+                clock = 0.0
+                prev_idx = depot_idx
+                new_total_miles = 0.0
+                for j, s in enumerate(r.stops, 1):
+                    here_idx = matrix.index_of(s.location_code)
+                    leg_miles = matrix.distances_miles[prev_idx][here_idx]
+                    leg_min = matrix.times_minutes[prev_idx][here_idx]
+                    clock += leg_min
+                    s.sequence = j
+                    s.arrival_minutes_from_start = round(clock, 1)
+                    s.departure_minutes_from_start = round(clock + SERVICE_TIME_MIN, 1)
+                    clock += SERVICE_TIME_MIN
+                    new_total_miles += leg_miles
+                    prev_idx = here_idx
+                # closing leg back to depot
+                back_miles = matrix.distances_miles[prev_idx][depot_idx]
+                back_min = matrix.times_minutes[prev_idx][depot_idx]
+                new_total_miles += back_miles
+                r.total_miles = round(new_total_miles, 2)
+                r.total_minutes = round(clock + back_min, 1)
+                r.estimated_cost_usd = round(
+                    new_total_miles * per_mile + len(r.stops) * per_stop, 2
+                )
+
     return routes, exceptions, "OK"
 
 
@@ -373,6 +453,10 @@ def solve_vrp(
     bundle: ConstraintBundle,
     *,
     solver_seconds: int = 30,
+    capacity_relaxation_pct: float = 0.0,
+    window_slack_minutes: int = 0,
+    weather_overrides: dict[str, list[str]] | None = None,
+    priority_first: list[str] | None = None,
 ) -> OptimizationResult:
     """Solve the full multi-temperature-group VRP and produce an OptimizationResult."""
     started = _time.perf_counter()
@@ -406,6 +490,10 @@ def solve_vrp(
             matrix=matrix,
             bundle=bundle,
             solver_seconds=max(1, solver_seconds // max(1, len(by_temp))),
+            capacity_relaxation_pct=capacity_relaxation_pct,
+            window_slack_minutes=window_slack_minutes,
+            weather_overrides=weather_overrides,
+            priority_first=priority_first,
         )
         all_routes.extend(routes)
         all_exceptions.extend(excs)
@@ -433,6 +521,59 @@ def solve_vrp(
         f"Distance source: {'Azure Maps Route Matrix (truck profile)' if matrix.used_azure_maps else 'Haversine fallback (great-circle x 1.3, 55 mph)'}",
     ]
     relaxed: list[str] = []
+    if capacity_relaxation_pct and capacity_relaxation_pct > 0:
+        pct = round(capacity_relaxation_pct * 100, 1)
+        considerations.append(f"What-if: capacity relaxed +{pct}% on all trailers (weight & cube)")
+        relaxed.append(f"capacity_relaxation_pct={capacity_relaxation_pct}")
+    if window_slack_minutes:
+        considerations.append(f"What-if: delivery windows widened ±{window_slack_minutes} minutes")
+        relaxed.append(f"window_slack_minutes={window_slack_minutes}")
+    if priority_first:
+        considerations.append(f"What-if: priority-first sequencing for {sorted(set(priority_first))}")
+    if weather_overrides:
+        for state, allowed in weather_overrides.items():
+            considerations.append(f"What-if: {state} weather override → only {allowed} allowed")
+
+    # --- Splits detection (Phase 3 / Q4) ---------------------------------
+    # A "split" = same store appears on >1 route. Reason inferred from why:
+    #   - mixed_temp_zones if multiple temp groups land at the same code
+    #   - weight_over_one_trailer if total weight > biggest trailer cap
+    #   - cube_over_one_trailer if total cube > biggest 1-stop cube cap
+    #   - other otherwise
+    splits: list[SplitFinding] = []
+    if all_routes:
+        max_weight = max((t.max_weight_lbs for t in bundle.trailer_types), default=0.0)
+        max_cube = max((t.max_cube_1stop for t in bundle.trailer_types), default=0.0)
+        per_store: dict[str, list[tuple[Route, RouteStop]]] = defaultdict(list)
+        for r in all_routes:
+            for s in r.stops:
+                per_store[s.location_code].append((r, s))
+        for code, hits in per_store.items():
+            if len(hits) < 2:
+                continue
+            route_ids = sorted({r.route_id for r, _ in hits})
+            if len(route_ids) < 2:
+                continue
+            total_w = sum(s.weight_delivered_lbs for _, s in hits)
+            total_c = sum(s.cube_delivered for _, s in hits)
+            temps = {r.temperature_group for r, _ in hits}
+            if len(temps) > 1:
+                reason = "mixed_temp_zones"
+            elif max_weight and total_w > max_weight:
+                reason = "weight_over_one_trailer"
+            elif max_cube and total_c > max_cube:
+                reason = "cube_over_one_trailer"
+            else:
+                reason = "other"
+            loc = locations_by_code.get(code)
+            splits.append(SplitFinding(
+                location_code=code,
+                location_name=loc.location_name if loc else None,
+                route_ids=route_ids,
+                total_weight_lbs=round(total_w, 1),
+                total_cube=round(total_c, 1),
+                reason=reason,
+            ))
 
     return OptimizationResult(
         routes=all_routes,
@@ -449,4 +590,5 @@ def solve_vrp(
         savings_percent=round(savings_pct, 2),
         solver_status="; ".join(statuses),
         solve_seconds=round(_time.perf_counter() - started, 2),
+        splits=splits,
     )

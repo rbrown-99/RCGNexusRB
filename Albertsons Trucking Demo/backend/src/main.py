@@ -6,11 +6,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api import (
     compare_router,
+    delay_impact_router,
     explain_router,
     optimize_router,
     parse_router,
     reoptimize_router,
     samples_router,
+    sensitivity_router,
     validate_router,
 )
 from .config import settings
@@ -37,5 +39,5 @@ def healthz():
 
 for router in (parse_router, optimize_router, validate_router,
                reoptimize_router, compare_router, explain_router,
-               samples_router):
+               samples_router, delay_impact_router, sensitivity_router):
     app.include_router(router)

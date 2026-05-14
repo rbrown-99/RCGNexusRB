@@ -2,7 +2,7 @@
   "type": "function",
   "function": {
     "name": "reoptimize",
-    "description": "Re-run the optimizer with what-if changes: drop orders, drop locations, make trailer configs unavailable, or attach an extra consideration note. Returns a fresh route plan.",
+    "description": "Re-run the optimizer with what-if changes. Supports dropping orders/locations/trailer configs, loosening capacity, widening delivery windows, forcing a hot-load store to be the first stop, and applying a weather override that restricts trailer types in a state.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -10,7 +10,29 @@
         "remove_orders": {"type": "array", "items": {"type": "string"}},
         "remove_locations": {"type": "array", "items": {"type": "string"}},
         "remove_trailer_configs": {"type": "array", "items": {"type": "string"}, "description": "e.g. ['45-45_COMBO']"},
-        "extra_consideration": {"type": "string", "description": "free-form note appended to the result.considerations list"}
+        "extra_consideration": {"type": "string", "description": "free-form note appended to the result.considerations list"},
+        "capacity_relaxation_pct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.5,
+          "description": "Loosen weight + cube cap by this fraction (e.g. 0.05 for +5%)."
+        },
+        "window_slack_minutes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 480,
+          "description": "Widen every store delivery window by N minutes on each side."
+        },
+        "priority_first": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Store codes that must be sequenced as the first stop on whichever route serves them (hot-load)."
+        },
+        "weather_overrides": {
+          "type": "object",
+          "additionalProperties": {"type": "array", "items": {"type": "string"}},
+          "description": "Per-state allow-list of trailer configs. e.g. {\"MT\": [\"SINGLE_53\"]} means only 53ft singles may operate in Montana."
+        }
       },
       "required": ["session_id"]
     }
