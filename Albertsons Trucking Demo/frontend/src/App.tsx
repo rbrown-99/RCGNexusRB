@@ -94,7 +94,12 @@ export default function App() {
               lastRunScenario={lastRunScenario}
             />
             <FileUpload onResult={handleResult} onSession={setSessionId} />
-            <ChatInterface sessionId={sessionId} result={resp} onResult={handleResult} />
+            <ChatInterface
+              sessionId={sessionId}
+              result={resp}
+              scenario={lastRunScenario}
+              onResult={handleResult}
+            />
           </aside>
 
           <main className="right">

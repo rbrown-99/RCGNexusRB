@@ -1,4 +1,4 @@
-import MermaidDiagram from './MermaidDiagram';
+import ZoomableDiagram from './ZoomableDiagram';
 
 const ARCH_DIAGRAM = `
 flowchart LR
@@ -37,7 +37,7 @@ flowchart LR
   subgraph CORE["Core engines"]
     direction TB
     P[Pandas / openpyxl<br/>parsers]:::solver
-    S[OR-Tools CP-SAT<br/>multi-temp VRP]:::solver
+    S[OR-Tools Routing<br/>multi-temp VRP]:::solver
     V[Route Validator<br/>12 exception codes]:::solver
     SP[Split Detector<br/>by temp / weight / cube]:::solver
   end
@@ -134,7 +134,7 @@ const COMPONENTS = [
     layer: 'Optimization Core',
     color: '#2a8a2a',
     items: [
-      ['Google OR-Tools (CP-SAT routing)', 'Independent VRP per temperature group (AMBIENT, COOLER, FREEZER)'],
+      ['Google OR-Tools (constraint_solver / RoutingModel)', 'Independent VRP per temperature group (AMBIENT, COOLER, FREEZER); PATH_CHEAPEST_ARC + GUIDED_LOCAL_SEARCH'],
       ['Distance matrix', 'Azure Maps Route Matrix v2 with truck profile; haversine fallback (×1.3, 55 mph) when offline'],
       ['Route Validator', '12 exception codes: cube/weight near + over capacity, delivery late, driver hours, window-at-risk, layover-required, LCB-off-interstate, long-inter-stop-hop, low-utilization, road-restriction-note'],
       ['Split detector', 'Flags any store served by 2+ routes, classifying reason as mixed_temp_zones / weight_over_one_trailer / cube_over_one_trailer'],
@@ -197,8 +197,9 @@ export default function ArchitecturePage() {
         <h1>How it works</h1>
         <p>
           A live view of every component that processes a dispatcher's input
-          spreadsheets and produces an optimized fleet plan. Drag, scroll, or
-          zoom the diagram below.
+          spreadsheets and produces an optimized fleet plan. Use the toolbar to
+          zoom in, drag to pan, or click the fullscreen button for a true
+          big-screen view.
         </p>
       </header>
 
@@ -208,7 +209,7 @@ export default function ArchitecturePage() {
           Solid arrows are HTTP calls; dotted arrows are agent tool invocations
           back into the backend.
         </p>
-        <MermaidDiagram id="arch-diagram" chart={ARCH_DIAGRAM} />
+        <ZoomableDiagram id="arch-diagram" chart={ARCH_DIAGRAM} minHeight={600} />
         <div className="legend">
           <span><i style={{ background: '#fdf2f1', borderColor: '#d52b1e' }} />Frontend (React)</span>
           <span><i style={{ background: '#fef9e6', borderColor: '#a86c00' }} />Backend (FastAPI)</span>
@@ -261,8 +262,9 @@ export default function ArchitecturePage() {
 
       <section className="diagram-card">
         <h2>Request flow — running a sample scenario</h2>
-        <MermaidDiagram
+        <ZoomableDiagram
           id="seq-diagram"
+          minHeight={520}
           chart={`
 sequenceDiagram
   autonumber

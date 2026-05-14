@@ -185,6 +185,64 @@ main.right { padding: 24px 28px; overflow-y: auto; background: var(--surface); }
 }
 .chat .input-row button:hover { background: var(--albs-blue-dark); }
 
+/* Suggested-prompt chips above the chat input */
+.chat .chat-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px 0;
+  border-top: 1px dashed var(--border);
+  background: linear-gradient(180deg, rgba(0, 61, 165, 0.025) 0%, transparent 100%);
+}
+.chat .chip-suggest {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--albs-blue);
+  background: white;
+  color: var(--albs-blue);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, transform 80ms ease;
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+}
+.chat .chip-suggest:hover:not(:disabled) {
+  background: var(--albs-blue);
+  color: white;
+}
+.chat .chip-suggest:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.chat .chip-suggest:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Chat "typing" indicator while a request is in flight */
+.chat .typing-msg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 14px;
+}
+.chat .typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--albs-blue);
+  opacity: 0.6;
+  animation: typing-bounce 1s infinite ease-in-out;
+}
+.chat .typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.chat .typing-dot:nth-child(3) { animation-delay: 0.30s; }
+@keyframes typing-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40%           { transform: translateY(-3px); opacity: 1; }
+}
+
 /* ─── Welcome card ────────────────────────────────────────────────────── */
 .welcome {
   background: var(--card); padding: 36px 40px;
@@ -369,6 +427,142 @@ header { gap: 1.25rem; flex-wrap: wrap; }
 }
 .mermaid-host svg { max-width: 100%; height: auto; }
 .mermaid-err { color: #b71c1c; font-family: ui-monospace, monospace; }
+
+/* Inside the zoom viewport, let the SVG render at its natural size so we can
+   actually zoom in usefully — clamp it back when *not* zoomed via the parent. */
+.zoom-content .mermaid-host { overflow: visible; padding: 0; }
+.zoom-content .mermaid-host svg { max-width: none; height: auto; }
+
+/* ---------- Zoomable diagram wrapper ---------- */
+.zoom-frame {
+  position: relative;
+  margin-top: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 61, 165, 0.02) 0px,
+      rgba(0, 61, 165, 0.02) 1px,
+      transparent 1px,
+      transparent 24px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 61, 165, 0.02) 0px,
+      rgba(0, 61, 165, 0.02) 1px,
+      transparent 1px,
+      transparent 24px
+    ),
+    #ffffff;
+  outline: none;
+  overflow: hidden;
+}
+.zoom-frame:focus-visible {
+  border-color: var(--albs-blue, #003DA5);
+  box-shadow: 0 0 0 3px rgba(0, 61, 165, 0.18);
+}
+.zoom-frame-fs {
+  border-radius: 0;
+  border: none;
+  background: #ffffff;
+}
+
+.zoom-toolbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+.zoom-scale {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--albs-blue, #003DA5);
+  padding: 0 6px 0 4px;
+  font-variant-numeric: tabular-nums;
+  min-width: 38px;
+  text-align: right;
+}
+.zoom-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--albs-blue, #003DA5);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, transform 0.06s;
+}
+.zoom-btn:hover { background: rgba(0, 61, 165, 0.1); }
+.zoom-btn:active { transform: scale(0.92); }
+.zoom-btn-text {
+  width: auto;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.zoom-viewport {
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.zoom-viewport.is-dragging { cursor: grabbing; }
+.zoom-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  will-change: transform;
+}
+/* Mermaid SVG sometimes has its own pointer cursor on nodes — keep grab cursor unified. */
+.zoom-viewport svg, .zoom-viewport svg * { cursor: inherit; }
+
+.zoom-hint {
+  position: absolute;
+  bottom: 8px;
+  left: 12px;
+  font-size: 11px;
+  color: #6b6f7e;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 3px 8px;
+  border-radius: 6px;
+  pointer-events: none;
+}
+.zoom-hint kbd {
+  display: inline-block;
+  padding: 0 4px;
+  margin: 0 1px;
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  background: #f7f7fa;
+  color: #1f2330;
+}
+
+/* In fullscreen, push the toolbar/hint a bit further from the edge. */
+.zoom-frame-fs .zoom-toolbar { top: 16px; right: 16px; }
+.zoom-frame-fs .zoom-hint    { bottom: 16px; left: 16px; }
 
 .legend {
   display: flex;
@@ -648,31 +842,43 @@ header { gap: 1.25rem; flex-wrap: wrap; }
 }
 .scenario-select-wrap { position: relative; }
 .scenario-select-wrap::after {
-  content: '?';
+  content: '';
   position: absolute;
-  right: 12px; top: 50%;
-  transform: translateY(-50%);
+  right: 14px; top: 50%;
+  width: 10px; height: 10px;
+  transform: translateY(-65%) rotate(45deg);
+  border-right: 2px solid var(--albs-blue);
+  border-bottom: 2px solid var(--albs-blue);
   pointer-events: none;
-  color: var(--ink-muted);
-  font-size: 12px;
+  transition: transform .18s ease;
+}
+.scenario-select-wrap:hover::after {
+  transform: translateY(-50%) rotate(45deg) scale(1.05);
 }
 .scenario-select {
   appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
   width: 100%;
-  padding: 10px 32px 10px 12px;
+  padding: 10px 36px 10px 12px;
   font-size: 13.5px;
   font-weight: 600;
   color: var(--ink);
   background: var(--bg-surface, #fff);
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--albs-blue);
   border-radius: 10px;
   cursor: pointer;
-  transition: border-color .15s, box-shadow .15s;
+  box-shadow: 0 1px 2px rgba(0, 61, 165, 0.06);
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.scenario-select:hover:not(:disabled) {
+  background: rgba(0, 61, 165, 0.03);
+  box-shadow: 0 2px 6px rgba(0, 61, 165, 0.12);
 }
 .scenario-select:focus {
   outline: none;
-  border-color: var(--accent, #2563eb);
-  box-shadow: 0 0 0 3px rgba(37,99,235,.15);
+  border-color: var(--albs-blue);
+  box-shadow: 0 0 0 3px rgba(0, 61, 165, 0.18);
 }
 .scenario-select:disabled { opacity: .55; cursor: not-allowed; }
 
