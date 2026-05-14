@@ -1,4 +1,4 @@
-import ZoomableDiagram from './ZoomableDiagram';
+import MermaidDiagram from './MermaidDiagram';
 
 const ARCH_DIAGRAM = `
 flowchart LR
@@ -197,9 +197,7 @@ export default function ArchitecturePage() {
         <h1>How it works</h1>
         <p>
           A live view of every component that processes a dispatcher's input
-          spreadsheets and produces an optimized fleet plan. Use the toolbar to
-          zoom in, drag to pan, or click the fullscreen button for a true
-          big-screen view.
+          spreadsheets and produces an optimized fleet plan.
         </p>
       </header>
 
@@ -209,7 +207,7 @@ export default function ArchitecturePage() {
           Solid arrows are HTTP calls; dotted arrows are agent tool invocations
           back into the backend.
         </p>
-        <ZoomableDiagram id="arch-diagram" chart={ARCH_DIAGRAM} minHeight={600} />
+        <MermaidDiagram id="arch-diagram" chart={ARCH_DIAGRAM} />
         <div className="legend">
           <span><i style={{ background: '#fdf2f1', borderColor: '#d52b1e' }} />Frontend (React)</span>
           <span><i style={{ background: '#fef9e6', borderColor: '#a86c00' }} />Backend (FastAPI)</span>
@@ -262,9 +260,8 @@ export default function ArchitecturePage() {
 
       <section className="diagram-card">
         <h2>Request flow — running a sample scenario</h2>
-        <ZoomableDiagram
+        <MermaidDiagram
           id="seq-diagram"
-          minHeight={520}
           chart={`
 sequenceDiagram
   autonumber
